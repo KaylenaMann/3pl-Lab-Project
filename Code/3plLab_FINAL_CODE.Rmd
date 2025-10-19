@@ -1,0 +1,589 @@
+---
+title: "DEP_3PL lab"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cerulean
+    code_folding: hide
+    df_print: paged
+  word_document:
+    toc: true
+params:
+  data_file: DEPRESSION_DATA.sav
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+Research background: R can be used to model dichotomous and polytomous
+data, and can be extremely flexible with different algorithms, item
+types, constraints, priors, etc.
+
+For this lab, we will use MIRT to:
+
+-   Evaluate **model fit indices** to determine which model fits out
+    data best.
+-   Summarize **classical item statistics**.
+-   Extract and plot **item parameters**.
+-   Evaluate **person-fit statistics**.
+
+------------------------------------------------------------------------
+
+# 1. Data Preparation {.tabset}
+
+Before we begin modeling, we need to prepare our dataset. This includes
+loading required libraries, handling missing values, and ensuring binary
+response data for proper estimation.
+
+## 1.1 Clear Workspace & Load Required Libraries
+
+```{r clear-workspace}
+rm(list = ls()) # Clear environment
+gc()            # Clear unused memory
+cat("\f")       # Clear the console
+```
+
+## 1.2 Load and Download Libraries
+
+```{r setup}
+# We will only be using two packages today
+library.list <- c("haven", "mirt") 
+for (i in 1:length(library.list)) {
+  if (!library.list[i] %in% rownames(installed.packages())) {
+    install.packages(library.list[i])
+  }
+  library(library.list[i], character.only = TRUE)
+}
+rm(library.list)
+help(mirt)
+```
+
+## 1.3 Load Data
+
+We just need the columns from the 2nd to the 11th, including 10 items.
+
+```{r, loading data}
+# Load data using haven's `read_sav`
+data <- read_sav("DEPRESSION_DATA.sav")
+data <- data.frame(data[, 2:11])  # Select only item response columns (columns 2 to 11)
+
+# Check structure of the data
+str(data)
+
+# Display the first 6 rows of data
+head(data)
+```
+
+## 1.4 Handle Missing Values
+
+Missing values can affect model estimation.
+
+```{r, missing values}
+# Check for missing values
+if (any(is.na(data))) {
+  stop("The dataset contains missing values. Handle missing data before analysis.")
+}
+
+```
+
+## 1.5 Make Sure Everything is Binary
+
+Since we are using a 3PL model, all responses must be coded as 0
+(incorrect) or 1 (correct).
+
+```{r, binary data}
+# Ensure binary responses (0/1)
+unique_values <- lapply(data, unique)
+print(unique_values)
+if (!all(unlist(unique_values) %in% c(0, 1))) {
+  stop("The dataset contains non-binary values. Ensure items are coded as 0 or 1.")
+}
+```
+
+**Now that the data is clean we are good to go to fit the model!**
+
+------------------------------------------------------------------------
+
+# 2. Utilizing Priors {.tabset}
+
+The following is the commands needed to estimate a 3pl model with MIRT:
+
+-   **Data:** The name of your data, missing values should be coded as
+    NA.
+
+-   **Model:** A string declaring how to estimate, we will use the
+    default model = 1 since we have unidimensionality.
+
+-   **itemtype:** The type of model, we can choose Rasch, all the way to
+    5pl, rating scales, or partial credit models. Here we choose 3PL.
+
+-   **SE:** We want to print standard errors.
+
+-   **SE.type:** We can choose the estimation method such as SEM, MHRM,
+    or Fisher. We will use Fisher for the Hessian EM algorithm.
+
+## 2.1 Freely Estimated 3pl Model
+
+First, we fit a freely estimated 3PL model without imposing any
+constraints.
+
+```{r, fitting 3pl model without a prior}
+# Fit the 3PL model
+model_3PL <- mirt(
+  data = data, 
+  model = 1, 
+  itemtype = '3PL',
+  SE = TRUE,
+  SE.type = "Fisher", 
+  verbose = FALSE
+)
+
+print(model_3PL)
+```
+
+**Did you get a warning? What should we do if the model does not
+converge?**
+
+In some cases, freely estimating parameters leads to instability in the
+guessing parameter in 3PL (Ayala, 2022; Han, 2012).
+
+## 2.2 3pl with Guessing Prior
+
+Similar to BILOG, MIRT uses 'EM', for the standard EM algorithm with
+fixed quadrature. However, by default, BILOG implements prior
+distributions on all item parameters under the 3PL model. The normal
+distribution is used for b, the log-normal for the a, and the beta for
+the c. In contrast, we have to manually set priors in MIRT.
+
+**Since we had issues converging, we will focus on the guessing
+parameter**
+
+Currently supported priors are of the form: (items, norm, mean, sd) for
+the normal/Gaussian, (items, lnorm, log_mean, log_sd) for log-normal,
+and (items, alpha, beta) for beta but we should use *norm* in this case,
+as suggested in the MIRT documentation:
+
+"Internally the **g** and u parameters are transformed using a logit
+transformation: log(x/1-x), and can be reversed by using 1/(1+exp(−x))
+following convergence. As such, when applying prior distributions to
+these parameters it is recommended to use a prior that ranges from
+**negative infinity to positive infinity**, such as the normally
+distributed prior via the 'norm' input."
+
+```{r, fitting 3pl model with a prior}
+param_values <- mod2values(model_3PL)
+
+# Identify guessing parameters (g)
+guessing_indices <- which(param_values$name == 'g')
+
+# Set Logit-Normal priors for guessing (g), as recommended by Ayala (2022). 
+param_values$prior.type[guessing_indices] <- "norm"
+param_values$prior_1[guessing_indices] <- -1.5  # Mean in logit space
+param_values$prior_2[guessing_indices] <- 0.5   # SD in logit space
+
+# Refit model with updated priors
+model_3PL_prior <- mirt(
+  data,
+  1,
+  itemtype = '3PL',
+  SE = TRUE,
+  verbose = FALSE,
+  pars = param_values
+)
+
+# Verify priors were applied correctly
+print(mod2values(model_3PL_prior))
+
+# Check the new model
+print(model_3PL_prior)
+```
+
+There is no perfect prior, but utilizing a normal prior on the guessing
+parameter (g) in the logit space with a mean of approximately –1.5 and a
+standard deviation of 0.5 is a recommended choice (Ayala, 2022;
+Robitzsch, 2022). This relates to expected guessing probability around
+18–20%, which is realistic, while still allowing for flexibility.
+
+## 2.3 Compare Models
+
+Now, we compare the freely estimated model to the model with the prior.
+
+```{r, comparing models}
+# Extract coefficients for both models
+coef(model_3PL, simplify = T, IRTpars = TRUE)
+coef(model_3PL_prior, simplify = T, IRTpars = TRUE)
+```
+
+**Why are our estimates different?**
+
+In 3PL, as we have learned, the parameters are more related. For
+example, if a guessing parameter increases, discrimination decreases,
+and the difficulty may shift as well. This can create issues when
+allowing a model to freely estimate all parameters. However, just adding
+a prior to the guessing parameter, has been shown to provide a more
+feasible, stable, and accurate item estimation (Ayala, 2022; Han, 2012).
+
+```{r, M2 and Plots}
+M2(model_3PL)  # Freely estimated 3PL model
+M2(model_3PL_prior)  # 3PL model with priors on guessing
+
+# Comparing ICC plots
+plot(model_3PL, type = 'trace', facet_items = F)  #Plotting ICC 
+plot(model_3PL_prior, type = 'trace', facet_items = F)
+```
+
+How does the item 1 change when adding a prior?
+
+```{r, SEs}
+# Compare Standard Error's (SEs)
+summary(model_3PL)  
+summary(model_3PL_prior)
+```
+
+Adding the prior led to lower standard errors, faster convergence, and
+more reasonable guessing values. Since we still want to have flexibility
+in the model, we will not use additional priors on the other parameters
+
+------------------------------------------------------------------------
+
+# 3. Part 1: Classical Item Statistics {.tabset}
+
+Now that we have our model, we will examine classical item statistics!
+
+## 3.1 Model Fit
+
+This code provides model fit indices and information on factor loadings,
+since we already know unidimensionality fits, we can move on to
+summarize the data.
+
+```{r, fitting 3pl model}
+summary(model_3PL_prior)  # Model Summary
+```
+
+## 3.2 Summarize Data
+
+Now we will compute classical item statistics, such as the proportion
+correct for each item and logit difficulty.
+
+```{r, summarizing data}
+# Summarize the dataset
+print(summary(data))
+
+# Calculate the number of correct responses per item
+correct_counts <- colSums(data)
+total_respondents <- nrow(data)
+proportion_correct <- correct_counts / total_respondents
+
+# Calculate the logit of the proportion correct
+logit <- -log(proportion_correct / (1 - proportion_correct))
+
+# Combine results into a summary table for items
+results <- data.frame(
+  N_Right = correct_counts,
+  PCT = proportion_correct,
+  Logit = logit
+)
+
+# Display the item summary
+print(results)
+```
+
+Which items have a higher proportion correct? Do you think this relates
+to difficulty scores?
+
+## 3.3 Correlations
+
+Now we compare correlations for each item.
+
+```{r, correlations}
+# Loop through items
+for (j in 1:ncol(data)) {
+  item_scores <- data[, j]
+  NC_residual <- rowSums(data[, -j, drop = FALSE], na.rm = TRUE)
+  
+  # Proportion correct
+  p <- mean(item_scores, na.rm = TRUE)
+  q <- 1 - p
+  
+  # Means for correct/incorrect groups, and residual SD
+  mean_1 <- mean(NC_residual[item_scores == 1], na.rm = TRUE)
+  mean_0 <- mean(NC_residual[item_scores == 0], na.rm = TRUE)
+  sd_residual <- sd(NC_residual, na.rm = TRUE)
+  
+  # Point-Biserial and Biserial Correlation
+  r_pb <- ((mean_1 - mean_0) / sd_residual) * sqrt(p * q)
+  r_b <- r_pb * sqrt(p * q) / dnorm(qnorm(p))
+  
+  # Print results
+  cat(sprintf("Item %d: Point-Biserial = %.5f, Biserial = %.5f\n", j, r_pb, r_b))
+}
+```
+
+The **point biserial** correlation is the pearson correlation between
+item score (0 or 1) and the test score (total of item scores)
+
+$$
+r_{PB} = \frac{(u_j - u_x)}{\sigma^2} \sqrt{\frac{p_j}{ q_j}}
+$$
+
+The **biserial** correlation estimates the relationship between the
+total score and the hypothetical score underlying the dichotomous item.
+
+$$
+r_{b,j} = \frac{r_{Pb_j}\sqrt{p_j(1-p_j)}}{h(Z_j)} 
+$$
+
+In general, according to the formulas, if the item is at a medium
+(average) level of difficulty will have a higher item-score correlation.
+
+**Why is point biserial correlation always smaller than biserial
+correlation?**
+
+------------------------------------------------------------------------
+
+# 4. Part 2: Item Parameters {.tabset}
+
+Now, we extract item parameters and evaluate item fit.
+
+## 4.1 Extract Item Parameters
+
+```{r, coefficients}
+# Extract coefficients in IRT parameterization
+coef_3PL <- coef(model_3PL_prior, simplify = TRUE, IRTpars = TRUE)
+print(coef_3PL)
+```
+
+a1 (Discrimination): Measures how well an item differentiates between
+individuals with different ability levels. Higher values indicate high
+discrimination.
+
+d (Difficulty): Indicates the ability level required for a 50%
+probability of a correct response. Positive values suggest harder items.
+
+g (Guessing): The probability of guessing the correct answer. Higher
+values suggest substantial guessing.
+
+u (Upper Asymptote): Fixed at 1 in most 3PL models, representing the
+maximum probability of a correct response.
+
+## 4.2 Assess Item Fit
+
+S-X2 is a special case of the Pearson’s χ2 statistic. large S-X2 values
+with small p-values suggest item-misfit. Are any of the values
+significant (p\<.05)?
+
+```{r, itemfit}
+# Assess item fit
+itemfit(model_3PL_prior)
+```
+
+Poorly fitting items should be inspected with the empirical plots/tables
+for unidimensional models.
+
+In this case, all items look good!
+
+## 4.3 ICC Curves
+
+Now we will plot the ICCs, to better understand how each item is
+functioning.
+
+```{r, plotting ICC}
+# Plot Item Characteristic Curves (ICCs)
+plot(model_3PL_prior, type = 'trace', main = "Item Characteristic Curves (ICCs)")
+
+# See how the data fits the ICCs
+# add 'for(i in 1:length(data))' if you want all plots
+itemfit(model_3PL_prior, 
+                      group.bins=9,
+                      empirical.plot = 1,
+                      empirical.CI = .95,
+                      method = 'EAP') 
+itemfit(model_3PL_prior, 
+                      group.bins=9,
+                      empirical.plot = 10,
+                      empirical.CI = .95,
+                      method = 'EAP') 
+itemfit(model_3PL_prior, 
+                      group.bins=9,
+                      empirical.plot = 8,
+                      empirical.CI = .95,
+                      method = 'EAP') 
+```
+
+Do the curves fit the data well?
+
+```{R,}
+# See all the ICCs in one plot
+plot(model_3PL_prior, type = 'trace', facet_items = F)
+```
+
+## 4.4 Test Information
+
+```{r, Plotting Test Information}
+# Plot test information
+plot(model_3PL_prior, type='info', main='Test Information Function')
+
+# Plot item information (for item i)
+plot(model_3PL_prior, type='infotrace', which.items=1:ncol(data))
+
+# Compare item information on one plot
+plot(model_3PL_prior, type = 'infotrace', facet_items = F)
+```
+
+Which item provides the most information? How does that relate to the
+total information?
+
+```{r}
+# Compare Test Information and Standard Error
+plot(model_3PL_prior, type = 'infoSE')
+```
+
+The standard error function is the square root of the reciprocal of the
+information. How does the plot reflect this?
+
+------------------------------------------------------------------------
+
+# 5. Part 3: Examinee Parameters {.tabset}
+
+Now, we assess whether individuals fit the model based on their response
+patterns.
+
+## 5.1 Person Fit
+
+Outfit and infit scores between .50 and 1.50 are generally considered
+acceptable (Linacre, 2002).
+
+```{r, person fit}
+# Calculate person fit
+fit_stats <- personfit(
+  model_3PL_prior,
+  method = "EAP",
+  Theta = NULL,
+  stats.only = FALSE,
+  return.resids = FALSE,
+)
+head(fit_stats)
+
+# Sum misfitting respondents
+sum(fit_stats$infit > 1.5 | fit_stats$outfit > 1.5 | fit_stats$infit < .50 | fit_stats$outfit < .50) 
+misfit <- fit_stats[fit_stats$infit > 1.5 | fit_stats$outfit > 1.5, ]
+head(misfit)  # Print the first few misfitting cases
+```
+
+Here you can see individual response patterns and fit indices. 70
+examinees had infit or outfit values outside the acceptable range (0.5 -
+1.5), suggesting that most response patterns align well with the model,
+but about 14% do not. This is a bit more than acceptable, so we should
+be cautious.
+
+What can we do? We can **look into the response patterns** of those who
+fall outside the acceptable range to understand their answers better.
+
+Depending on our findings, we can consider revising the test items or
+adjusting the model parameters to better accommodate abilities and
+different response styles.
+
+```{r, person comparison}
+# Calculate each person's number correct
+NC <- rowSums(data)
+
+# Calculate theta 
+person_scores <- fscores(model_3PL_prior, method = "EAP") 
+Theta <- fscores(model_3PL_prior, method = "EAP", full.scores = TRUE)
+
+# Compare number correct and theta
+person_comparison <- data.frame(
+  num_correct = NC,
+  theta_hat = person_scores[, 1]
+)
+
+# Look at the first 6 rows
+head(person_comparison)
+```
+
+Here we can evaluate each examinees total score along with there ability
+estimate.
+
+The 1st and 3rd examinees answer the same amount of items correctly, but
+their ability estimates are different? How can looking at their specific
+response patters give a clue?
+
+## 5.2 Reliability
+
+Finally, we estimate the empirical reliability of the test.
+
+```{r, reliability}
+# Evaluate the empirical reliability
+theta_se = fscores(model_3PL_prior, full.scores.SE = T)
+empirical_rxx(theta_se)
+```
+
+The empirical reliability of the test is the theta score variance
+divided by the sum of that variance and the error variance. Here, the
+reliability is 0.562 which shows that this test is reliable in some
+degree
+
+# **CONCLUSION**
+
+**We found more stable estimates when utilizing a prior.**
+
+-   We observed reduced standard errors (SE) for item parameters,
+    indicating more precise estimates.
+-   The model converged faster enhancing overall efficiency of the
+    model.
+-   The model with the prior demonstrated slightly better fit indices.
+
+**Classical Item Statistics**
+
+-   Proportion correct values ranged from 0.334 (item 10) to 0.822 (Item
+    1), suggesting varied item difficulty.
+-   Item 7 showed the lowest biserial correlation (0.09), warranting
+    further examination.
+
+**Item Parameters**
+
+-   Difficulty ranged from -2.560 (item 1) to 1.724 (item 10)
+-   Lowest discrimination was item 7 at 0.340, and highest was item 8 at
+    3.714. We saw item 8 contributed the most information, which could
+    be indicative of over-fitting.
+-   Guessing ranged from .148 to .245, affecting the lower asymptotes of
+    the item characteristic curves.
+-   The S-X2 statistic, which assesses item fit, showed no significant
+    item misfit (p-values all \> 0.05).
+
+**Examinee Parameters**
+
+-   70 examinees (out of 500) had infit or outfit values outside of 1.5,
+    suggesting that most response patterns align well with the model.
+    This is a bit more than acceptable, so we should be cautious and
+    evaluate the response patterns.
+
+-   The empirical reliability estimate was 0.561, indicating moderate
+    reliability.
+
+# Citations
+
+<https://cran.r-project.org/web/packages/mirt/mirt.pdf>
+
+Bond, T. G., & Fox, C. M. (2007). Applying the Rasch model: Fundamental
+measurement in the human sciences (2nd ed.). Routledge.
+
+De Ayala, R. J. (2009). The theory and practice of item response Theory.
+Guilford Press.
+
+Han, K. T. (2012). Fixing the c parameter in the three-parameter
+logistic model. Practical Assessment, Research, and Evaluation, 17(1).
+<https://doi.org/10.7275/f0gz-kc87>
+
+Iwintolu, R. O., Opesemowo, O. A. G., & Adetutu, P. O. (2024). Effect of
+2-PL and 3-PL models on the ability estimate in mathematics binary
+items. Journal on Efficiency and Responsibility in Education and
+Science, 17(3), 257–272. <http://dx.doi.org/10.7160/eriesj.2024.170308>
+
+Linacre, J. (2002) What do infit and outfit, mean-square and
+standardized mean? Rasch Measurement Transactions, 16, 878.
+
+Robitzsch, A. (2022). Four-parameter guessing model and related item
+response models. Mathematical and Computational Applications, 27(6), 95.
+<https://doi.org/10.3390/mca27060095>
