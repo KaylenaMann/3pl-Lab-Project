@@ -1,4 +1,4 @@
-# 3pl-Lab-Project
+# 3pl-Lab
 ## Overview
 
 This project applies **three-parameter logistic (3PL)** item response theory modeling using R's MIRT package to evaluate test quality and examinee ability. The analysis examines model fit, item characteristics, and person-fit statistics for a 10-item assessment administered to 500 examinees.
