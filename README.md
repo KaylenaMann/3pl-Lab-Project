@@ -51,7 +51,7 @@ Using priors in the 3PL model significantly improved estimate stability:
 -   The empirical reliability estimate was 0.561, indicating moderate
     reliability.
     
-## Recomendations
+## Recommendations
 1. Revise Item 7 – Low discrimination and item-total correlation warrant content review or deletion
 2. Investigate aberrant responders – Examine the 70 examinees with unusual response patterns
 3. Monitor Item 8 – Validate its high discrimination on independent samples to rule out overfitting
