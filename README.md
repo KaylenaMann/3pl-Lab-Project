@@ -1,35 +1,39 @@
 # 3pl-Lab-Project
-Research background: R can be used to model dichotomous and polytomous
+## Overview
+
+This project applies **three-parameter logistic (3PL)** item response theory modeling using R's MIRT package to evaluate test quality and examinee ability. The analysis examines model fit, item characteristics, and person-fit statistics for a 10-item assessment administered to 500 examinees.
+
+## Research background
+
+R can be used to model dichotomous and polytomous
 data, and can be extremely flexible with different algorithms, item
 types, constraints, priors, etc.
 
-For this lab, we will use MIRT to:
-
+## Research Objectives
 -   Evaluate **model fit indices** to determine which model fits out
     data best.
 -   Summarize **classical item statistics**.
 -   Extract and plot **item parameters**.
 -   Evaluate **person-fit statistics**.
   
-#  **CONCLUSION**
+#  **Key Findings**
 
-**We found more stable estimates when utilizing a prior.**
+## **Model Estimation**
 
--   We observed reduced standard errors (SE) for item parameters,
-    indicating more precise estimates.
--   The model converged faster enhancing overall efficiency of the
-    model.
--   The model with the prior demonstrated slightly better fit indices.
+Using priors in the 3PL model significantly improved estimate stability:
+- Reduced standard errors for item parameters, indicating more precise estimates
+- Faster model convergence, enhancing computational efficiency
+- Slightly improved fit indices compared to the model without priors
+
+## **Item Quality**
 
 **Classical Item Statistics**
-
 -   Proportion correct values ranged from 0.334 (item 10) to 0.822 (Item
     1), suggesting varied item difficulty.
 -   Item 7 showed the lowest biserial correlation (0.09), warranting
     further examination.
 
 **Item Parameters**
-
 -   Difficulty ranged from -2.560 (item 1) to 1.724 (item 10)
 -   Lowest discrimination was item 7 at 0.340, and highest was item 8 at
     3.714. We saw item 8 contributed the most information, which could
@@ -40,16 +44,20 @@ For this lab, we will use MIRT to:
     item misfit (p-values all \> 0.05).
 
 **Examinee Parameters**
-
 -   70 examinees (out of 500) had infit or outfit values outside of 1.5,
     suggesting that most response patterns align well with the model.
     This is a bit more than acceptable, so we should be cautious and
     evaluate the response patterns.
-
 -   The empirical reliability estimate was 0.561, indicating moderate
     reliability.
+    
+## Recomendations
+1. Revise Item 7 – Low discrimination and item-total correlation warrant content review or deletion
+2. Investigate aberrant responders – Examine the 70 examinees with unusual response patterns
+3. Monitor Item 8 – Validate its high discrimination on independent samples to rule out overfitting
+4. Improve reliability – Consider item revision or selection of higher-discriminating items to boost overall test consistency
 
-# Citations
+# References
 
 <https://cran.r-project.org/web/packages/mirt/mirt.pdf>
 
